@@ -11,7 +11,7 @@
    как панель ?tune=1, а не интерфейс продукта. */
 (function () {
   'use strict';
-  const VER = 'test-2 · 2026-09-14';
+  const VER = 'test-4 · 2026-09-14';
   const $ = (s, r = document) => r.querySelector(s);
   const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
   const now = () => performance.now();
@@ -34,6 +34,7 @@
 .tm-p { margin: 0 0 16px; font-size: 15px; line-height: 1.45; color: var(--dim); }
 .tm-btn { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 56px; margin-top: 8px;
   border: 0; border-radius: var(--r-pill); background: var(--lav); color: var(--on-accent); font: 600 15px var(--ui); cursor: pointer; }
+.tm-btn:disabled { opacity: .6; cursor: default; }
 .tm-btn.ghost { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1px rgba(255,255,255,.28); }
 .tm-ta { display: block; width: 100%; min-height: 88px; margin: 0 0 16px; padding: 12px; border: 0; border-radius: var(--r-bar);
   background: var(--bg0); box-shadow: inset 0 0 0 1px #242424; color: var(--ink); font: 15px/1.45 var(--ui); resize: vertical; }
@@ -88,7 +89,8 @@
     const c = {}; list.forEach(l => { c[l] = (c[l] || 0) + 1; });
     return 'касаний ' + list.length + ' (' + Object.entries(c).sort((a, b) => b[1] - a[1]).map(([k, v]) => k + ' ' + v).join(', ') + '), первым: ' + list[0];
   };
-  const outcome = t => (t.ok === true ? 'да' : 'нет, «сдаюсь»') + ' · ' + sec(t.ms) + ' · ' + tapSummary(t.taps);
+  const outcome = t => (t.ok === true ? 'да' : 'нет — ' + (t.reason || '«сдаюсь»') + (t.how ? ' «' + t.how + '»' : ''))
+    + ' · ' + sec(t.ms) + ' · ' + tapSummary(t.taps);
 
   // ---- карточки ----
   const clear = () => { root.innerHTML = ''; };
@@ -140,6 +142,25 @@
     c.querySelectorAll('.tm-seq button').forEach((b, i) => { b.onclick = () => res(i + 1); });
   });
 
+  // после «Сдаюсь»: непонятое задание — дефект теста, «не нашёл как» — находка о продукте.
+  // Пилот 2026-09-14 показал, почему это нужно: без вопроса «не понял» пряталось в «по-своему».
+  const NOT_CLEAR = 'не понял(а) задание';
+  const why = () => new Promise(res => {
+    const c = card(`<p class="tm-k">Ничего страшного — это тоже результат</p><h2 class="tm-h">Что случилось?</h2>
+      <button class="tm-btn ghost" type="button" data-r="${NOT_CLEAR}">Не понял(а), что нужно сделать</button>
+      <button class="tm-btn ghost" type="button" data-r="не нашёл(ла), как">Понял(а), но не нашёл(ла), как</button>
+      <button class="tm-btn ghost" type="button" data-r="сделал(а) по-другому">Сделал(а) по-другому</button>`);
+    c.querySelectorAll('[data-r]').forEach(b => { b.onclick = () => {
+      const reason = b.dataset.r;
+      if (reason !== 'сделал(а) по-другому') return res({ reason });
+      const c2 = card(`<p class="tm-k">Сделал(а) по-другому</p><h2 class="tm-h">Как именно?</h2>
+        <textarea class="tm-ta" rows="3" placeholder="Скриншот, Shazam, заметка…"></textarea><button class="tm-btn" type="button">Дальше</button>`);
+      c2.querySelector('.tm-btn').onclick = () => res({ reason, how: c2.querySelector('.tm-ta').value.trim() });
+    }; });
+  });
+  // оценка лёгкости после непонятого задания ничего не значит — не спрашиваем
+  const rate = async (t, n) => { if (t.ok !== true) Object.assign(t, await why()); t.seq = t.reason === NOT_CLEAR ? null : await seq(n); };
+
   // ---- шаги ----
   function firstLook() {
     return new Promise(res => {
@@ -184,25 +205,38 @@
     const L = ['ATLAS · UX-тест (' + VER + ')', 'Устройство: ' + R.meta.dev + ' · ' + R.meta.size + ' · ' + R.meta.at, ''];
     L.push('0 Первый взгляд: ' + (R.look ? '«' + R.look + '»' : '—'));
     L.push('1 Звук: ' + outcome(R.t1));
-    L.push('2 Япония 1970-х: ' + outcome(R.t2) + ' · смен места ' + R.t2.places + ', декады ' + R.t2.decs + ' · лёгкость ' + R.t2.seq);
-    L.push('3 Сохранить: ' + (R.t3.ok === 'own' ? 'свой способ «' + (R.t3.how || '—') + '» · ' + sec(R.t3.ms) + ' · ' + tapSummary(R.t3.taps) : outcome(R.t3))
-      + (R.t3.signin ? ' · было окно входа' : '') + ' · лёгкость ' + R.t3.seq);
+    L.push('2 Япония 1970-х: ' + outcome(R.t2) + ' · смен места ' + R.t2.places + ', декады ' + R.t2.decs + ' · лёгкость ' + (R.t2.seq ?? '—'));
+    L.push('3 Сохранить: ' + outcome(R.t3) + (R.t3.signin ? ' · было окно входа' : '') + ' · лёгкость ' + (R.t3.seq ?? '—'));
     L.push('4 Свободно: ' + sec(R.free.ms) + ' · забросов ' + R.free.throws + ' · сохранений ' + R.free.saves + ' · мест ' + R.free.placesSeen);
     L.push('');
     Q.forEach((q, i) => L.push(q.short + ': ' + (R.q[i] || '—')));
     return L.join('\n');
   }
 
+  // Отправка — в Google Форму Николая «ATLAS тест», одно поле «Результат» (создана 2026-09-14).
+  // Google не показывает браузеру ответ (mode: no-cors), поэтому «Скопировать» остаётся запасным путём.
+  const FORM = 'https://docs.google.com/forms/d/e/1FAIpQLSf8_L7tJKFvJC3DF7rtR-k0XKJpRtTVY_WHyReYLarz2ALZ4Q/formResponse';
+  const FIELD = 'entry.1875269691';
+
   function finish() {
     const text = resultText();
-    const c = card(`<p class="tm-k">Готово, спасибо!</p><h2 class="tm-h">Пришли результат</h2>
-      <p class="tm-p">Нажми «Скопировать» и отправь текст тому, кто дал тебе ссылку.</p>
-      <textarea class="tm-ta out" readonly></textarea><button class="tm-btn" type="button">Скопировать</button>`);
+    const c = card(`<p class="tm-k">Готово, спасибо!</p><h2 class="tm-h">Отправь результат</h2>
+      <p class="tm-p">Одна кнопка — и результат уйдёт в Google Форму того, кто дал тебе ссылку. Имени и почты в нём нет.</p>
+      <textarea class="tm-ta out" readonly></textarea>
+      <button class="tm-btn" type="button" data-send>Отправить</button>
+      <button class="tm-btn ghost" type="button" data-copy>Скопировать</button>`);
     const ta = c.querySelector('.tm-ta'); ta.value = text;
-    const b = c.querySelector('.tm-btn');
-    b.onclick = () => {
-      const manual = () => { ta.focus(); ta.select(); b.textContent = 'Текст выделен — скопируй вручную'; };
-      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => { b.textContent = 'Скопировано ✓'; }, manual);
+    const send = c.querySelector('[data-send]'), copy = c.querySelector('[data-copy]');
+    send.onclick = () => {
+      if (send.disabled) return;
+      send.disabled = true; send.textContent = 'Отправляю…';
+      fetch(FORM, { method: 'POST', mode: 'no-cors', body: new URLSearchParams({ [FIELD]: text }) })
+        .then(() => { send.textContent = 'Отправлено ✓ Спасибо!'; })
+        .catch(() => { send.disabled = false; send.textContent = 'Не отправилось — ещё раз или «Скопировать»'; });
+    };
+    copy.onclick = () => {
+      const manual = () => { ta.focus(); ta.select(); copy.textContent = 'Текст выделен — скопируй вручную'; };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => { copy.textContent = 'Скопировано ✓'; }, manual);
       else manual();
     };
     window.__atlasTest = text;   // для проверки из консоли
@@ -237,6 +271,7 @@
 
     await oneButton(`<p class="tm-k">Задание 1 из 4</p><h2 class="tm-h">Включи что-нибудь послушать</h2>`);
     R.t1 = await run({ label: 'Включи что-нибудь послушать', done: () => playing() });
+    if (R.t1.ok !== true) Object.assign(R.t1, await why());
 
     // если заброс уже стоит на Японии, задание решилось бы само — уводим в другое место
     for (let i = 0; i < 3 && placeOf().country === 'Japan'; i++) { try { shuffle(); } catch (e) {} await wait(2500); }
@@ -251,41 +286,36 @@
       done: () => placeOf().country === 'Japan' && String(state.dec) === '1970' && playing(),
     });
     Object.assign(R.t2, { places, decs });
-    R.t2.seq = await seq(2);
+    await rate(R.t2, 2);
 
-    await oneButton(`<p class="tm-k">Задание 3 из 4</p><h2 class="tm-h">Допустим, песня понравилась</h2>
-      <p class="tm-p">Сделай так, чтобы потом её найти. Если попросят почту — подойдёт любая, даже выдуманная: прототип ничего не отправляет.</p>`);
+    await oneButton(`<p class="tm-k">Задание 3 из 4</p><h2 class="tm-h">Тебе понравилась песня, которая сейчас играет</h2>
+      <p class="tm-p">Сохрани её в приложении, чтобы потом найти. Если попросят почту — подойдёт любая, даже выдуманная: прототип ничего не отправляет.</p>`);
     let signin = false;
     // успех — ♥ текущего трека закрашено: рост списка обманул бы, вход подтягивает демо-карту
     R.t3 = await run({
-      label: 'Сохрани, чтобы найти потом',
+      label: 'Сохрани эту песню',
       tick: () => { if (document.querySelector('#signin.up, #signin.active, #signup.up, #login.up')) signin = true; },
       done: () => liked(),
-      extra: [{ text: 'По-своему', result: { ok: 'own' } }],
     });
     R.t3.signin = signin;
-    if (R.t3.ok === 'own') {
-      R.t3.how = await new Promise(res => {
-        const c = card(`<p class="tm-k">Задание 3</p><h2 class="tm-h">Как ты это сделал(а)?</h2>
-          <textarea class="tm-ta" rows="3" placeholder="Скриншот, Shazam, заметка…"></textarea><button class="tm-btn" type="button">Дальше</button>`);
-        c.querySelector('.tm-btn').onclick = () => res(c.querySelector('.tm-ta').value.trim());
-      });
-    }
-    R.t3.seq = await seq(3);
+    await rate(R.t3, 3);
 
     await oneButton(`<p class="tm-k">Задание 4 из 4</p><h2 class="tm-h">Две минуты — покрути что хочешь</h2>
       <p class="tm-p">Время приложение засечёт само. Можно закончить раньше.</p>`);
-    const saved0 = (state.saved || []).length, seen = new Set([state.place]);
+    // сохранения — по закрашиванию ♥, а не по росту списка: вход посреди режима подтягивает демо-карту
+    // из 17 находок, и пилот 2026-09-14 насчитал «18 сохранений» за одно нажатие
+    let wasOn = liked(), saves = 0; const seen = new Set([state.place]);
     R.free = await run({
       label: 'Свободно · 2:00', limit: 120000, stop: 'Хватит',
       tick: (span, t) => {
         seen.add(state.place);
+        const on = liked(); if (on && !wasOn) saves++; wasOn = on;
         const left = Math.max(0, 120 - Math.floor(t / 1000));
         span.textContent = 'Свободно · ' + Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0');
       },
     });
     R.free.throws = R.free.taps.filter(x => x === 'заброс').length;
-    R.free.saves = Math.max(0, (state.saved || []).length - saved0);
+    R.free.saves = saves;
     R.free.placesSeen = seen.size;
 
     await questions();
