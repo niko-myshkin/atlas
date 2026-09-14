@@ -11,7 +11,7 @@
    как панель ?tune=1, а не интерфейс продукта. */
 (function () {
   'use strict';
-  const VER = 'test-4 · 2026-09-14';
+  const VER = 'test-5 · 2026-09-14';
   const $ = (s, r = document) => r.querySelector(s);
   const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
   const now = () => performance.now();
@@ -35,6 +35,8 @@
 .tm-btn { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 56px; margin-top: 8px;
   border: 0; border-radius: var(--r-pill); background: var(--lav); color: var(--on-accent); font: 600 15px var(--ui); cursor: pointer; }
 .tm-btn:disabled { opacity: .6; cursor: default; }
+.tm-btn.ghost.on { background: var(--lav); color: var(--on-accent); box-shadow: none; }
+.tm-card.top { top: calc(16px + env(safe-area-inset-top)); bottom: auto; }
 .tm-btn.ghost { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1px rgba(255,255,255,.28); }
 .tm-ta { display: block; width: 100%; min-height: 88px; margin: 0 0 16px; padding: 12px; border: 0; border-radius: var(--r-bar);
   background: var(--bg0); box-shadow: inset 0 0 0 1px #242424; color: var(--ink); font: 15px/1.45 var(--ui); resize: vertical; }
@@ -55,12 +57,7 @@
 `;
 
   const R = { meta: {}, look: '', t1: null, t2: null, t3: null, free: null, q: [] };
-  const Q = [
-    { short: 'Музыка, которая зацепила', text: 'Вспомни последний раз, когда новая музыка тебя зацепила. Как ты на неё наткнулся(лась)?' },
-    { short: 'Подобрало приложение', text: 'Вспомни последний раз, когда ты включил(а) то, что приложение подобрало само. Что это было и чем закончилось?' },
-    { short: 'Другая страна или время', text: 'Вспомни последний раз, когда ты слушал(а) музыку другой страны или другого времени. Как ты к ней пришёл(ла)? Если не было — так и напиши.' },
-    { short: 'Что было непонятно', text: 'Что в приложении было непонятно или раздражало?' },
-  ];
+  const Q = ['Как нашёл(ла) музыку, которая зацепила', 'Как часто включает подборки', 'Когда слушал(а) другую страну или время', 'Что было непонятно'];
 
   const style = el('style'); style.textContent = CSS; document.head.appendChild(style);
   const root = el('div', 'tm'); document.body.appendChild(root);
@@ -145,6 +142,7 @@
   // после «Сдаюсь»: непонятое задание — дефект теста, «не нашёл как» — находка о продукте.
   // Пилот 2026-09-14 показал, почему это нужно: без вопроса «не понял» пряталось в «по-своему».
   const NOT_CLEAR = 'не понял(а) задание';
+  const OTHER_WAY = ['Скриншот', 'Shazam или другое приложение', 'Запомнил(а)', 'Другое'];
   const why = () => new Promise(res => {
     const c = card(`<p class="tm-k">Ничего страшного — это тоже результат</p><h2 class="tm-h">Что случилось?</h2>
       <button class="tm-btn ghost" type="button" data-r="${NOT_CLEAR}">Не понял(а), что нужно сделать</button>
@@ -153,49 +151,79 @@
     c.querySelectorAll('[data-r]').forEach(b => { b.onclick = () => {
       const reason = b.dataset.r;
       if (reason !== 'сделал(а) по-другому') return res({ reason });
-      const c2 = card(`<p class="tm-k">Сделал(а) по-другому</p><h2 class="tm-h">Как именно?</h2>
-        <textarea class="tm-ta" rows="3" placeholder="Скриншот, Shazam, заметка…"></textarea><button class="tm-btn" type="button">Дальше</button>`);
-      c2.querySelector('.tm-btn').onclick = () => res({ reason, how: c2.querySelector('.tm-ta').value.trim() });
+      pick(`<p class="tm-k">Сделал(а) по-другому</p><h2 class="tm-h">Как именно?</h2>`, OTHER_WAY).then(how => res({ reason, how }));
     }; });
   });
   // оценка лёгкости после непонятого задания ничего не значит — не спрашиваем
   const rate = async (t, n) => { if (t.ok !== true) Object.assign(t, await why()); t.seq = t.reason === NOT_CLEAR ? null : await seq(n); };
 
+  // ---- выбор из готовых ответов: писать ничего не нужно (просьба Николая 2026-09-14) ----
+  // ⚠️ не «shuffle»: это имя глобальной функции заброса в продукте, её зовёт задание 2
+  const mix = (arr, keepLast = 1) => {          // случайный порядок, «не знаю» — всегда последним
+    const head = arr.slice(0, arr.length - keepLast), tail = arr.slice(arr.length - keepLast);
+    for (let i = head.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [head[i], head[j]] = [head[j], head[i]]; }
+    return head.concat(tail);
+  };
+  const optionsHtml = opts => opts.map(o => `<button class="tm-btn ghost" type="button" data-o="${o}">${o}</button>`).join('');
+  // один вопрос — одна карточка, тап по варианту сразу ведёт дальше.
+  // keep — не стирать то, что уже на экране (метки первого взгляда); pos 'top' — карточка сверху
+  const pick = (html, opts, { keep = false, pos = '' } = {}) => new Promise(res => {
+    if (!keep) { clear(); root.appendChild(el('div', 'tm-scrim')); }
+    const c = el('div', 'tm-card' + (pos ? ' ' + pos : ''), html + optionsHtml(opts));
+    root.appendChild(c);
+    c.querySelectorAll('[data-o]').forEach(b => { b.onclick = () => { c.remove(); res(b.dataset.o); }; });
+  });
+
   // ---- шаги ----
-  function firstLook() {
-    return new Promise(res => {
-      clear();
-      root.appendChild(el('div', 'tm-block'));
-      // метки не на центре: там город под прицелом и активный год. Позицию пересчитываем,
-      // пока карточка висит: глобус после заставки ещё доезжает, и разовый замер промахивался
-      const g = $('#globe'), d = $('.dial-row');
-      const marks = [[g, '1', r => [r.left + r.width / 2, r.top + 28]], [d, '2', r => [r.left + 28, r.top + r.height / 2]]]
-        .filter(([node]) => node)
-        .map(([node, n, at]) => { const m = el('div', 'tm-mark', n); root.appendChild(m); return { node, m, at }; });
-      const place = () => marks.forEach(({ node, m, at }) => {
-        const [x, y] = at(node.getBoundingClientRect()); m.style.left = Math.round(x) + 'px'; m.style.top = Math.round(y) + 'px';
-      });
-      place(); const follow = setInterval(place, 250);
+  // «Это кнопка» — не выдумка: так шкалу прочитал первый человек, увидевший экран со стороны (2026-09-04)
+  const GLOBE = ['Крутить и выбирать место', 'Просто картинка', 'Показывает, где я нахожусь', 'Не знаю'];
+  const DIAL = ['Листать и выбирать эпоху', 'Показывает текущий год', 'Это кнопка', 'Не знаю'];
+  async function firstLook() {
+    clear();
+    root.appendChild(el('div', 'tm-block'));
+    // метки не на центре: там город под прицелом и активный год. Позицию пересчитываем,
+    // пока вопросы висят: глобус после заставки ещё доезжает, и разовый замер промахивался
+    const g = $('#globe'), d = $('.dial-row');
+    const marks = [[g, '1', r => [r.left + r.width / 2, r.top + 28]], [d, '2', r => [r.left + 28, r.top + r.height / 2]]]
+      .filter(([node]) => node)
+      .map(([node, n, at]) => { const m = el('div', 'tm-mark', n); root.appendChild(m); return { node, m, at }; });
+    const place = () => marks.forEach(({ node, m, at }) => {
+      const [x, y] = at(node.getBoundingClientRect()); m.style.left = Math.round(x) + 'px'; m.style.top = Math.round(y) + 'px';
+    });
+    place(); const follow = setInterval(place, 250);
+    await new Promise(res => {
       const c = el('div', 'tm-card row', `<p class="tm-p">Ничего не нажимай. Посмотри на экран и на цифры 1 и 2.</p><button class="tm-btn" type="button">Ответить</button>`);
       root.appendChild(c);
-      c.querySelector('.tm-btn').onclick = () => {
-        clearInterval(follow);
-        const c2 = card(`<p class="tm-k">Первый взгляд</p><h2 class="tm-h">Что это, по-твоему?</h2>
-          <p class="tm-p">Что это за приложение? Что делают 1 и 2 и что с ними можно сделать?</p>
-          <textarea class="tm-ta" rows="4" placeholder="Своими словами, как думаешь"></textarea>
-          <button class="tm-btn" type="button">Дальше</button>`);
-        c2.querySelector('.tm-btn').onclick = () => { R.look = c2.querySelector('.tm-ta').value.trim(); res(); };
-      };
+      c.querySelector('.tm-btn').onclick = () => { c.remove(); res(); };
     });
+    // про 1 — карточка снизу, глобус с меткой виден; про 2 — сверху, видна шкала
+    R.look1 = await pick(`<p class="tm-k">Первый взгляд</p><h2 class="tm-h">Что делает 1?</h2>`, mix(GLOBE), { keep: true });
+    R.look2 = await pick(`<p class="tm-k">Первый взгляд</p><h2 class="tm-h">Что делает 2?</h2>`, mix(DIAL), { keep: true, pos: 'top' });
+    clearInterval(follow); clear();
   }
 
-  function questions() {
-    return new Promise(res => {
-      const c = card(`<p class="tm-k">Почти всё · можно пропустить любой</p><h2 class="tm-h">Четыре вопроса</h2>
-        ${Q.map((q, i) => `<p class="tm-k">${q.text}</p><textarea class="tm-ta" rows="3" data-q="${i}"></textarea>`).join('')}
-        <button class="tm-btn" type="button">Готово</button>`);
-      c.querySelector('.tm-btn').onclick = () => {
-        c.querySelectorAll('[data-q]').forEach(t => { R.q[+t.dataset.q] = t.value.trim(); });
+  const FOUND = ['Подборка приложения', 'Посоветовали', 'Соцсети или видео', 'Искал(а) сам(а)', 'Не помню'];
+  const OFTEN = ['Почти всегда', 'Часто', 'Иногда', 'Редко', 'Никогда'];
+  const WHEN = ['На этой неделе', 'В этом месяце', 'Давно', 'Не помню такого'];
+  const UNCLEAR = ['Как включить звук', 'Как выбрать место', 'Как выбрать год', 'Как сохранить', 'Что это за приложение'];
+  const ALL_CLEAR = 'Всё было понятно';
+  async function questions() {
+    R.q[0] = await pick(`<p class="tm-k">Вопрос 1 из 4</p><h2 class="tm-h">Как ты в последний раз нашёл(ла) новую музыку, которая зацепила?</h2>`, mix(FOUND));
+    R.q[1] = await pick(`<p class="tm-k">Вопрос 2 из 4</p><h2 class="tm-h">Как часто ты включаешь то, что приложение подобрало само?</h2>`, OFTEN);
+    R.q[2] = await pick(`<p class="tm-k">Вопрос 3 из 4</p><h2 class="tm-h">Когда ты последний раз слушал(а) музыку другой страны или другого времени?</h2>`, WHEN);
+    await new Promise(res => {
+      const c = card(`<p class="tm-k">Вопрос 4 из 4 · можно несколько</p><h2 class="tm-h">Что было непонятно?</h2>
+        ${optionsHtml(UNCLEAR.concat(ALL_CLEAR))}
+        <textarea class="tm-ta" rows="2" placeholder="Хочешь — добавь своими словами (необязательно)"></textarea>
+        <button class="tm-btn" type="button" data-done>Готово</button>`);
+      const opts = [...c.querySelectorAll('[data-o]')];
+      opts.forEach(b => { b.onclick = () => {
+        if (b.dataset.o === ALL_CLEAR) { const on = !b.classList.contains('on'); opts.forEach(x => x.classList.toggle('on', x === b && on)); }
+        else { b.classList.toggle('on'); opts.find(x => x.dataset.o === ALL_CLEAR).classList.remove('on'); }
+      }; });
+      c.querySelector('[data-done]').onclick = () => {
+        R.q[3] = opts.filter(x => x.classList.contains('on')).map(x => x.dataset.o).join(', ');
+        R.note = c.querySelector('.tm-ta').value.trim();
         res();
       };
     });
@@ -203,13 +231,14 @@
 
   function resultText() {
     const L = ['ATLAS · UX-тест (' + VER + ')', 'Устройство: ' + R.meta.dev + ' · ' + R.meta.size + ' · ' + R.meta.at, ''];
-    L.push('0 Первый взгляд: ' + (R.look ? '«' + R.look + '»' : '—'));
+    L.push('0 Первый взгляд: 1 (глобус) — «' + (R.look1 || '—') + '», 2 (шкала) — «' + (R.look2 || '—') + '»');
     L.push('1 Звук: ' + outcome(R.t1));
     L.push('2 Япония 1970-х: ' + outcome(R.t2) + ' · смен места ' + R.t2.places + ', декады ' + R.t2.decs + ' · лёгкость ' + (R.t2.seq ?? '—'));
     L.push('3 Сохранить: ' + outcome(R.t3) + (R.t3.signin ? ' · было окно входа' : '') + ' · лёгкость ' + (R.t3.seq ?? '—'));
     L.push('4 Свободно: ' + sec(R.free.ms) + ' · забросов ' + R.free.throws + ' · сохранений ' + R.free.saves + ' · мест ' + R.free.placesSeen);
     L.push('');
-    Q.forEach((q, i) => L.push(q.short + ': ' + (R.q[i] || '—')));
+    Q.forEach((q, i) => L.push(q + ': ' + (R.q[i] || '—')));
+    if (R.note) L.push('Своими словами: ' + R.note);
     return L.join('\n');
   }
 
