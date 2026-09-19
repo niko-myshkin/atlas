@@ -20,7 +20,7 @@
 
    ШКАЛА ЛЕТ — физика и рендер барабана.
    Наружу: DIAL (window.DIAL), dialMetrics, tx, txForIdx/idxFromTx/clampIdx,
-   curveReel, applyTx, refreshDial, dmomentum, clampTx.
+   curveReel, applyTx, refreshDial, dmomentum, dland, clampTx.
    Требует в разметке #reel и #dialWrap; ячейки годов создаёт сам из DEC. */
 
 /* ---- dial ----
@@ -209,7 +209,16 @@ function ddown(e){ cancelAnimationFrame(raf); dragging=true; dragMoved=false; ve
   e.preventDefault(); }
 function dmove(e){ if(!dragging)return; const x=pX(e),now=performance.now(),dx=x-lastX,dt=Math.max(8,now-lastT);
   tx=clampTx(tx+dx*DIAL.sens); vel=dx*DIAL.sens/dt; lastX=x; lastT=now; if(Math.abs(dx)>1)dragMoved=true; applyTx(tx,false); e.preventDefault&&e.preventDefault(); }
-function dup(){ if(!dragging)return; dragging=false; if(dragMoved) dmomentum(); }
+function dup(e){ if(!dragging)return; dragging=false; if(dragMoved){ dmomentum(); return; }
+  /* ?hints=1: тап по году переводит на него (проба 2026-09-19). Раньше касание без
+     движения молча игнорировалось, а год выглядит кнопкой — в тесте люди тапали,
+     ничего не происходило, и они сдавались. Невидимые за горизонтом годы не ловим. */
+  if(!window.__HINTS) return;
+  const el=e&&e.target&&e.target.closest&&e.target.closest('.yr');
+  if(!el || parseFloat(el.style.opacity)<.15) return;
+  const idx=[...reel.children].indexOf(el);
+  if(idx<0 || idx===clampIdx(Math.round(idxFromTx(tx)))) return;
+  tx=txForIdx(idx); applyTx(tx,true); dland(idx); }
 function clampTx(t){ return Math.max(txForIdx(DEC.length-1),Math.min(txForIdx(0),t)); }
 /* ⚠️ Через затвор: dmomentum на приземлении зовёт playResult и tick, а они
    объявлены в скрипте продукта. Касание в щель между <script src> подняло бы
@@ -226,6 +235,11 @@ function dmomentum(){ cancelAnimationFrame(raf); let last=performance.now();
       /* Подмену делаем НЕ здесь: лента едет к слоту ещё 340 мс (её собственный
          transition), и год всё это время должен ехать вместе с ней. Переключимся,
          когда она доедет, — тогда ячейка и неподвижный слой совпадут точка в точку. */
+      dland(idx); return; }
+    raf=requestAnimationFrame(f); })(last); }
+/* Приземление на эпоху idx: музыка вступает через DIAL.playMs, пока лента доезжает.
+   Вынесено из dmomentum 2026-09-19 — тем же путём идёт тап по году. */
+function dland(idx){
       setTimeout(()=>{ const dec=DEC[idx];
         /* Время повело — мир перестроится под него. Своей проверки здесь больше
            НЕТ (2026-09-10): «есть ли архив, а если нет — довернуть к ближайшему
@@ -234,7 +248,6 @@ function dmomentum(){ cancelAnimationFrame(raf); let last=performance.now();
            уехать — место выбиралось для одной эпохи, а игралось в другой.
            Здесь остаётся только «от кого отталкиваемся». */
         const p=state.place?placeById(state.place):nearestPlace(dec);
-        lastPlace=p.id; playResult(p,dec,true); },DIAL.playMs); return; }
-    raf=requestAnimationFrame(f); })(last); }
+        lastPlace=p.id; playResult(p,dec,true); },DIAL.playMs); }
 
 

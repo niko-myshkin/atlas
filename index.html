@@ -11,6 +11,10 @@
      ?inset-bottom=<px> — нижний. Значения зажаты, чтобы чужая ссылка не сломала кадр. */
   (function(){ var q = new URLSearchParams(location.search);
     window.__MECHANICS_MODE = q.get('view') === 'mechanics';
+    /* ?hints=1 — проба (2026-09-19): живой заголовок при вращении глобуса и тап по году
+       на шкале. Подсказки после заброса (движением, плашками, значками) пробовались
+       в тот же день и сняты решением Николая: «и так разберутся». Без флага продукт прежний. */
+    window.__HINTS = q.get('hints') === '1';
     if (window.__MECHANICS_MODE) document.documentElement.classList.add('mechanics-mode');
     var clamp = function(v, max){ v = parseFloat(v); return isFinite(v) ? Math.max(0, Math.min(v, max)) : null; };
     var top = clamp(q.get('inset'), 80), bottom = clamp(q.get('inset-bottom'), 60);
@@ -42,7 +46,7 @@ addEventListener('unhandledrejection',function(e){window.__err.push('promise: '+
      раз переписать названия, как браузер отдал из кеша вчерашнюю карту к новому
      каталогу — совпадений не нашлось, и 38 треков молча стали немыми.
      Меняются данные в assets/data — поднимать дату здесь же. */
-window.__DATA_VER = '2026-09-10b';
+window.__DATA_VER = '2026-09-19c';
 window.__DATA = ['audio-map','artist-pics'].map(function(n){
   return fetch('assets/data/'+n+'.json?v='+window.__DATA_VER).then(function(r){ return r.ok ? r.json() : null; })
                                         .catch(function(){ return null; });
@@ -194,6 +198,7 @@ window.__DATA = ['audio-map','artist-pics'].map(function(n){
        наследие Figma-фрейма, где иконки нарисованы в разных масштабах. */
     /* ДВА размера, третьего нет (2026-08-25): «чуть крупнее» на Now Playing отменено
        Николаем — иконки должны быть везде одни и те же и одного размера. */
+    --hero:max(52px, calc(60px*var(--u)));   /* бокс шара заброса (канон: «Бокс 60»); жил в .ctl-row, поднят 2026-09-19 */
     --icon:calc(26px * var(--u));       /* ряды управления и действия — оба экрана */
     --icon-sm:calc(21px * var(--u));
     --icon-xs:calc(18px * var(--u));   /* глиф внутри кружка ряда */    /* иконки в строке с текстом и в плеер-баре */
@@ -618,6 +623,9 @@ window.__DATA = ['audio-map','artist-pics'].map(function(n){
   /* [F] запятая — белая, прямая, свой трекинг; курсив и серый начинаются со страны */
   .comma{font-style:normal; color:var(--ink); letter-spacing:calc(-1px*var(--u));}
   .country{font-style:italic; color:#6a6a6a;}
+  /* ?hints=1: пока шар крутят, строка показывает город под прицелом — приглушённо,
+     `color/text-dim`: это ещё не выбор, а «куда едешь». Посадка возвращает белый. */
+  .place.preview .city,.place.preview .comma{color:var(--dim);}
 
   /* ── шкала лет [F] Frame 378: ячейка 70 + gap 24, слот 136 (числа макета
         округлены 2026-08-26: дробных в интерфейсе не держим) ── */
@@ -855,7 +863,10 @@ window.__DATA = ['audio-map','artist-pics'].map(function(n){
   /* [F] Frame 66 — прогресс по нижней кромке бара */
   .track .mini-bar{position:absolute; left:calc(12px*var(--u)); right:calc(12px*var(--u)); bottom:0;
     height:max(2px, calc(3px*var(--u))); border-radius:var(--r-pill); background:rgba(255,255,255,.06);}
-  .track .mini-bar i{position:absolute; left:0; top:0; height:100%; width:55.2%; border-radius:var(--r-pill); background:#B2B2B2;}
+  /* ⚠️ Стартовая ширина 0, а не 55.2% из макета (2026-09-19, «таймлайн врёт — вначале всегда
+     на середине»): пока звук не заиграл, полосу никто не перерисовывал, и она стояла на
+     макетной половине. Кадр макета ?figma=1 ставит 55.2 сам. */
+  .track .mini-bar i{position:absolute; left:0; top:0; height:100%; width:0; border-radius:var(--r-pill); background:#B2B2B2;}
 
   /* [ref] высота 2 — в референсе это волосяная линия (было 4) */
   .bar{height:calc(2px*var(--u)); background:rgba(255,255,255,.12); border-radius:var(--r-pill); position:relative; cursor:pointer;}
@@ -879,7 +890,7 @@ window.__DATA = ['audio-map','artist-pics'].map(function(n){
      .mini-bar отбит 12×u внутри .track, .track лежит в .bottom с полем 10×u —
      значит ряду достаточно 12×u, и крайние иконки встают ровно под кромки
      полосы прогресса. Было 59×u [F], ряд стоял узкой группой в центре. */
-  .ctl-row{--ico:var(--icon); --hero:max(52px, calc(60px*var(--u)));
+  .ctl-row{--ico:var(--icon);   /* --hero — в :root (2026-09-19) */
     display:flex; align-items:center; justify-content:space-between;
     /* Глиф внутри слота отступает на (44 − icon)/2, поэтому ряд подаётся наружу
        на столько же — крайние иконки встают ровно под кромками обложки и play.
@@ -1319,7 +1330,10 @@ window.__DATA = ['audio-map','artist-pics'].map(function(n){
      шкалы лет. Обкатано на Stats, раскатано на все экраны решением Николая.
      Ветка с морфом из иконки лежит в
      `_iterations/prototype-graphite-v4-morph-cards-2026-08-28.html`. */
-  /* ⚠️ РАЗМЫТИЕ СНЯТО 2026-08-30 (решение Николая: «убери пока blur эффекты»).
+  /* ✅ СТЕКЛО ВОЗВРАЩЕНО 2026-09-19 (Николай: «остальные экраны скучновато выглядят»,
+     проба под ?glass=1 → «сделай обратно» штатно). Правило — сразу под этим блоком.
+     История снятия ниже оставлена: она объясняет, почему без блюра прозрачность нельзя.
+     ⚠️ РАЗМЫТИЕ СНЯТО 2026-08-30 (решение Николая: «убери пока blur эффекты»).
      Панели были полупрозрачными и размывали главный экран под собой; теперь фон
      непрозрачный. Прозрачность без размытия оставлять НЕЛЬЗЯ — сквозь панель
      просвечивал бы глобус, и текст стал бы нечитаемым. Вернуть — заменить
@@ -1328,6 +1342,17 @@ window.__DATA = ['audio-map','artist-pics'].map(function(n){
      `_iterations/prototype-graphite-v4-before-noblur-2026-08-30.html`. */
   .screen .panel,#nowsheet,#rowmenu .panel,#signin .panel{
     background:var(--bg0);}
+  /* Стекло (возвращено 2026-09-19 после пробы под ?glass=1). Значения — ровно те,
+     что жили до снятия (снимок noblur).
+     Глобус под открытой панелью не рисуется (gloop в globe.js), поэтому блюр
+     считается по неподвижной картинке — главная причина рывков тогда снята.
+     Экран трека, пока он внизу, стекло не держит — как было в той версии.
+     ?flat=1 по-прежнему гасит всё: у него !important. */
+  .screen .panel,#nowsheet,#rowmenu .panel,#signin .panel{
+    background:rgba(14,14,14,.48);
+    -webkit-backdrop-filter:blur(calc(24px*var(--u))) saturate(1.15);
+    backdrop-filter:blur(calc(24px*var(--u))) saturate(1.15);}
+  #nowsheet:not(.up){-webkit-backdrop-filter:none; backdrop-filter:none;}
   /* Один материал и внутри: плашки были непрозрачным #1E1E1E поверх стеклянной
      панели — два разных материала в одном кадре, и они же глушили блюр, занимая
      почти всю площадь. Теперь плашки — лёгкий слой того же стекла (`--glass-2`,
@@ -1958,6 +1983,7 @@ window.__DATA = ['audio-map','artist-pics'].map(function(n){
         window.__bootFreeze = false;
         a.classList.remove('booting', 'warm', 'rise');
         if (skipHandler) { removeEventListener('pointerdown', skipHandler); skipHandler = null; }
+        if (window.placeIn) window.placeIn();   /* первое появление строки города */
       }
       window.finishBoot = finish;
 
@@ -2362,10 +2388,10 @@ if (window.__MECHANICS_MODE) {
      Скрипты обычные (не module) и делят с кодом ниже один верхний лексический
      контекст, поэтому имена видны так же, как когда всё лежало в одном <script>.
      Порядок обязателен. ⚠️ ?v= обязан совпадать с __DATA_VER выше. -->
-<script src="assets/js/catalog.js?v=2026-09-10b"></script>
-<script src="assets/js/dial.js?v=2026-09-10b"></script>
-<script src="assets/js/globe.js?v=2026-09-10b"></script>
-<script src="assets/js/audio.js?v=2026-09-10b"></script>
+<script src="assets/js/catalog.js?v=2026-09-19c"></script>
+<script src="assets/js/dial.js?v=2026-09-19c"></script>
+<script src="assets/js/globe.js?v=2026-09-19c"></script>
+<script src="assets/js/audio.js?v=2026-09-19c"></script>
 <script>
 /* land is now the real earth-dark.jpg texture rendered by three.js — see the
    module script near the end of the file. Continents are no longer drawn as dots. */
@@ -2445,10 +2471,14 @@ function playResult(p,dec,push,gi){
   if(!walking && (p.id!==state.place || dec!==state.dec)) walk=[];
   const arr=p.eras[dec]||null; if(arr&&gi>=arr.length)gi=0;
   state.place=p.id; state.dec=dec; state.gi=gi; prog=0;
+  /* новый трек — полоса с нуля сразу, не дожидаясь звука (он может и не начаться: автоплей).
+     Кроме сверки ?figma=1: там полоса держит макетные 55.2, а playResult приходит позже. */
+  if(!FIGMA_MODE) drawProg();
   const e=arr?arr[gi]:null, track=document.getElementById('track'), cov=document.getElementById('cover');
   document.getElementById('city').textContent=p.name;
   document.getElementById('cityComma').textContent=', ';
   document.getElementById('country').textContent=p.country;
+  document.getElementById('place').classList.remove('preview'); previewId=null;
   /* ⚠️ Подгонку кегля надо звать ЗДЕСЬ, при смене места (починено 2026-09-07).
      Раньше fitPlace() вызывался ровно из двух мест — из layout() и, по недоразумению,
      из toggleSave(), — то есть строка подгонялась при ресайзе окна и при лайке, но НЕ
@@ -2586,6 +2616,54 @@ function setGlow(tint){ const g=document.getElementById('glow');
    остаётся многоточие. Высота строки задана отдельно, поэтому раскладка колонки
    от смены кегля не прыгает. */
 const PLACE_MIN = 31;             /* нижняя граница читаемости — она и раньше стояла в CSS */
+/* ── ?hints=1: ЖИВОЙ ЗАГОЛОВОК (проба 2026-09-19) ───────────────────────
+   Зачем: не все знают географию, а подписей на шаре нет — пока крутишь, непонятно,
+   куда едешь. Плашку на самом шаре не возвращаем: её сняли 2026-08-26, потому что
+   она дублировала этот заголовок и подписывала только уже выбранный город.
+   Здесь тот же заголовок просто начинает жить раньше — во время вращения.
+   Город — nearestPlace(): тот же, на который магнит посадит шар, если отпустить. */
+let previewId=null;
+/* ── ПОЯВЛЕНИЕ СТРОКИ ГОРОДА (2026-09-19, просьба Николая) ─────────────────
+   ТОЛЬКО ПЕРВОЕ появление — в конце заброса, вместе с лесенкой интерфейса (зовёт
+   finish() заброса, задержка --b-stagger — та же, что у .place). Первый заход
+   играл на КАЖДОЙ смене места и отменён Николаем в тот же вечер: пока строка
+   проявлялась, название не читалось — терялась помощь с географией, ради которой
+   живой заголовок и делали. Дальше город меняется в строке сразу.
+   Строка мягко поднимается из лёгкого блюра, город чуть раньше страны. Длительность —
+   --b-ui-dur (.5 с), как у остальных блоков лесенки и как строка появлялась до этой
+   анимации; кривая — --b-letter-ease букв вордмарка. (--b-letter-dur .8 с пробовали —
+   Николай: «у нас же быстрее появлялись».)
+   ⚠️ Первый заход шёл на токенах шторок (--screen-in .52 + --ease-drawer) — «слишком
+   резко»: кривая шторки стартует рывком. И блюр висел на каждом слове с задержкой
+   у страны — она доезжала последней, и в момент снятия фильтра браузер перерисовывал
+   курсив резким уже в одиночку: «страна тупо подпрыгивает в конце» (геометрия при
+   этом стояла — замер по кадрам, x страны 187.63 весь путь).
+   Теперь блюр и подъём — на ВСЕЙ строке (.place), резкость возвращается разом;
+   порядок «город → страна» держит только opacity спанов — она не перерисовывает текст.
+   У спанов transform не работает (они inline), а inline-block сломал бы многоточие
+   длинных пар («Johannesburg, South …»): оно режет только inline-текст.
+   reduced-motion — без анимации. */
+let placeInDone=false;
+window.placeIn=function(){
+  if(RM || placeInDone) return; placeInDone=true;
+  const cs=getComputedStyle(document.documentElement);
+  const d0=parseFloat(cs.getPropertyValue('--b-stagger'))*1000||0;
+  const dur=parseFloat(cs.getPropertyValue('--b-ui-dur'))*1000||500, ease=cs.getPropertyValue('--b-letter-ease').trim()||'ease-out';
+  const rise=8*(parseFloat(cs.getPropertyValue('--u'))||1);
+  document.getElementById('place').animate(
+    [{transform:`translateY(${rise}px)`, filter:'blur(6px)'},{transform:'none', filter:'none'}],
+    {duration:dur,easing:ease,delay:d0,fill:'backwards'});
+  const fade=[{opacity:0},{opacity:1}];
+  ['city','cityComma'].forEach(id=>document.getElementById(id).animate(fade,{duration:dur*.6,easing:ease,delay:d0,fill:'backwards'}));
+  document.getElementById('country').animate(fade,{duration:dur*.6,easing:ease,delay:d0+90,fill:'backwards'}); };
+function previewPlace(p){
+  if(!p || p.id===previewId) return;
+  previewId=p.id;
+  document.getElementById('city').textContent=p.name;
+  document.getElementById('cityComma').textContent=', ';
+  document.getElementById('country').textContent=p.country;
+  document.getElementById('place').classList.add('preview');
+  fitPlace(); }
 function fitPlace(){
   const el=document.getElementById('place'); if(!el||!el.parentElement) return;
   const row=el.parentElement, rs=getComputedStyle(row);
