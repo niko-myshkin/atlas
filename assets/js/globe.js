@@ -174,10 +174,11 @@ function gloop(now){ const dt=Math.min(48,now-gLastT); gLastT=now;
     if(Math.abs(mTy-yaw)<0.0015 && Math.abs(mTp-pitch)<0.0015 && Math.hypot(vYaw,vPitch)<0.00012){
       yaw=mTy; pitch=mTp; vYaw=vPitch=0; gmode='hold';
       if(gAfter){const cb=gAfter; gAfter=null; cb();} } }
-  /* ?hints=1: пока шар ведёт палец или инерция — заголовок показывает город под
-     прицелом (previewPlace в скрипте продукта). Полёт к цели (кости, тап) не трогаем:
-     там город уже известен. */
-  if(window.__HINTS && ((gmode==='drag'&&gMoved) || (gmode==='spin'&&!gTargetPlace))) previewPlace(nearestPlace());
+  /* ЖИВОЙ ЗАГОЛОВОК (штатно с 2026-09-19, флаг ?hints=1 снят решением Николая):
+     пока шар ведёт палец или инерция, заголовок показывает город под прицелом
+     (previewPlace в скрипте продукта) — подписей на шаре нет, и без этого непонятно,
+     куда едешь. Полёт к цели (заброс, тап) не трогаем: там город уже известен. */
+  if((gmode==='drag'&&gMoved) || (gmode==='spin'&&!gTargetPlace)) previewPlace(nearestPlace());
   renderGlobe(); requestAnimationFrame(gloop); }
 /* ⚠️ Первый кадр — только после того, как продукт дочитан. Иначе отрисовка,
    вставленная браузером между <script src>, стартует цикл на полусобранном

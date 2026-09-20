@@ -11,9 +11,9 @@
      ?inset-bottom=<px> — нижний. Значения зажаты, чтобы чужая ссылка не сломала кадр. */
   (function(){ var q = new URLSearchParams(location.search);
     window.__MECHANICS_MODE = q.get('view') === 'mechanics';
-    /* ?hints=1 — проба (2026-09-19): живой заголовок при вращении глобуса и тап по году
-       на шкале. Подсказки после заброса (движением, плашками, значками) пробовались
-       в тот же день и сняты решением Николая: «и так разберутся». Без флага продукт прежний. */
+    /* ?hints=1 — осталось только для тапа по году на шкале (проба). Живой заголовок
+       с 2026-09-19 работает штатно, без флага. Подсказки после заброса (движением,
+       плашками, значками) пробовались в тот же день и сняты: «и так разберутся». */
     window.__HINTS = q.get('hints') === '1';
     if (window.__MECHANICS_MODE) document.documentElement.classList.add('mechanics-mode');
     var clamp = function(v, max){ v = parseFloat(v); return isFinite(v) ? Math.max(0, Math.min(v, max)) : null; };
@@ -46,7 +46,7 @@ addEventListener('unhandledrejection',function(e){window.__err.push('promise: '+
      раз переписать названия, как браузер отдал из кеша вчерашнюю карту к новому
      каталогу — совпадений не нашлось, и 38 треков молча стали немыми.
      Меняются данные в assets/data — поднимать дату здесь же. */
-window.__DATA_VER = '2026-09-19c';
+window.__DATA_VER = '2026-09-20b';
 window.__DATA = ['audio-map','artist-pics'].map(function(n){
   return fetch('assets/data/'+n+'.json?v='+window.__DATA_VER).then(function(r){ return r.ok ? r.json() : null; })
                                         .catch(function(){ return null; });
@@ -623,7 +623,7 @@ window.__DATA = ['audio-map','artist-pics'].map(function(n){
   /* [F] запятая — белая, прямая, свой трекинг; курсив и серый начинаются со страны */
   .comma{font-style:normal; color:var(--ink); letter-spacing:calc(-1px*var(--u));}
   .country{font-style:italic; color:#6a6a6a;}
-  /* ?hints=1: пока шар крутят, строка показывает город под прицелом — приглушённо,
+  /* Живой заголовок: пока шар крутят, строка показывает город под прицелом — приглушённо,
      `color/text-dim`: это ещё не выбор, а «куда едешь». Посадка возвращает белый. */
   .place.preview .city,.place.preview .comma{color:var(--dim);}
 
@@ -824,7 +824,19 @@ window.__DATA = ['audio-map','artist-pics'].map(function(n){
     height:var(--pg-h); width:calc(var(--pg-h) * .7071);}
   .pgly::after{content:""; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
     width:max(44px,100%); height:max(44px,100%);}          /* тач ≥44 */
-  .pgly i{position:absolute; top:0; bottom:0; background:currentColor;}
+  /* ── ПЕРЕХОД PLAY ↔ PAUSE (2026-09-20, просьба Николая «заанимировать») ──
+     Мягкая подмена: полосы гаснут и сжимаются к своим кромкам, треугольник
+     проявляется и подрастает. Он живёт на ::before, а не на третьем элементе, —
+     разметка знака стоит в четырёх местах, и добавлять всем по <i> пришлось бы
+     руками. ::after занят тач-зоной 44.
+     Длительность .22s и кривая --ease-in-out — с уже собранного экрана: столько
+     же идёт разогрев знака заброса, а кривая симметричная, то есть мягкая с
+     обоих концов (шторочная --ease-drawer к 60 мс уже на 80% и читается рывком —
+     замерено в 03_design/playpause-lab.html, где сравнивались два варианта).
+     Геометрия знака НЕ тронута: бокс, ширины полос и округление до целого
+     пикселя (грабля 2026-09-04 «полосы разной толщины») остались прежними. */
+  .pgly i{position:absolute; top:0; bottom:0; background:currentColor;
+    transition:opacity .22s var(--ease-in-out), transform .22s var(--ease-in-out);}
   .pgly i:first-child{left:0; right:64.29%;}
   .pgly i:last-child{left:64.29%; right:0;}
   /* ⚠️ Полосы паузы РАВНЫ по расчёту (обе 35.71%, замер даёт разницу ровно 0),
@@ -849,13 +861,21 @@ window.__DATA = ['audio-map','artist-pics'].map(function(n){
     .pgly i:first-child{left:0; right:auto;}
     .pgly i:last-child{left:auto; right:0;}
     /* треугольник play строится бордером — он обязан быть той же целой ширины */
-    .pgly.paused i:first-child{border-left-width:round(calc(var(--pg-h) * .7071), 1px);}
+    .pgly::before{border-left-width:round(calc(var(--pg-h) * .7071), 1px);}
   }
-  .pgly.paused i:first-child{left:0; right:0; background:none;
+  /* треугольник play — отдельный слой поверх полос */
+  .pgly::before{content:""; position:absolute; left:0; top:0;
     border-left:calc(var(--pg-h) * .7071) solid currentColor;
     border-top:calc(var(--pg-h) * .5) solid transparent;
-    border-bottom:calc(var(--pg-h) * .5) solid transparent;}
-  .pgly.paused i:last-child{display:none;}
+    border-bottom:calc(var(--pg-h) * .5) solid transparent;
+    opacity:0; transform:scale(.72); transform-origin:left center;
+    transition:opacity .22s var(--ease-in-out), transform .22s var(--ease-in-out);}
+  .pgly.paused::before{opacity:1; transform:scale(1);}
+  /* пауза → play: полосы уходят каждая к своей кромке */
+  .pgly.paused i{opacity:0;}
+  .pgly.paused i:first-child{transform:scaleX(.4); transform-origin:left center;}
+  .pgly.paused i:last-child{transform:scaleX(.4); transform-origin:right center;}
+  @media (prefers-reduced-motion:reduce){ .pgly i,.pgly::before{transition:none;} }
   /* в плеер-баре — тот же общий размер: «иконки везде одного размера» (решение
      Николая 2026-08-25). Прежнее значение [F] 20.07 из макета этим отменено;
      бар 55 высотой, знак 24 в нём стоит свободно. */
@@ -2388,10 +2408,10 @@ if (window.__MECHANICS_MODE) {
      Скрипты обычные (не module) и делят с кодом ниже один верхний лексический
      контекст, поэтому имена видны так же, как когда всё лежало в одном <script>.
      Порядок обязателен. ⚠️ ?v= обязан совпадать с __DATA_VER выше. -->
-<script src="assets/js/catalog.js?v=2026-09-19c"></script>
-<script src="assets/js/dial.js?v=2026-09-19c"></script>
-<script src="assets/js/globe.js?v=2026-09-19c"></script>
-<script src="assets/js/audio.js?v=2026-09-19c"></script>
+<script src="assets/js/catalog.js?v=2026-09-20b"></script>
+<script src="assets/js/dial.js?v=2026-09-20b"></script>
+<script src="assets/js/globe.js?v=2026-09-20b"></script>
+<script src="assets/js/audio.js?v=2026-09-20b"></script>
 <script>
 /* land is now the real earth-dark.jpg texture rendered by three.js — see the
    module script near the end of the file. Continents are no longer drawn as dots. */
@@ -2616,7 +2636,7 @@ function setGlow(tint){ const g=document.getElementById('glow');
    остаётся многоточие. Высота строки задана отдельно, поэтому раскладка колонки
    от смены кегля не прыгает. */
 const PLACE_MIN = 31;             /* нижняя граница читаемости — она и раньше стояла в CSS */
-/* ── ?hints=1: ЖИВОЙ ЗАГОЛОВОК (проба 2026-09-19) ───────────────────────
+/* ── ЖИВОЙ ЗАГОЛОВОК (штатно с 2026-09-19) ─────────────────────────────
    Зачем: не все знают географию, а подписей на шаре нет — пока крутишь, непонятно,
    куда едешь. Плашку на самом шаре не возвращаем: её сняли 2026-08-26, потому что
    она дублировала этот заголовок и подписывала только уже выбранный город.
